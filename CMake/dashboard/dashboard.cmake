@@ -33,7 +33,7 @@ endif()
 # this silly dance is because we use separate repos to write protect the master branch
 # and use the branch name of master on both the master and devel repos
 set(TOPIC_NAME ${PROJECT_BRANCH})
-if(PROJECT_BRANCH STREQUAL "master")
+if(PROJECT_BRANCH STREQUAL "master" OR PROJECT_BRANCH STREQUAL "release")
   set(REPO "git://github.com/UV-CDAT/uvcdat.git")
 else()
   set(MASTER_REPO "git://github.com/UV-CDAT/uvcdat.git")
@@ -98,18 +98,27 @@ set(PLATFORM_SPECIFIC_CACHE_DATA "
   ")
 
 set(PROJECT_STATIC_LIB_EXT ".a")
+set(_uvcdat_build_mode $ENV{BUILD_MODE})
 
 # Set up the source and build directories properly
 # Replace slashes with underscores for path
 string(REPLACE "/" "_" PROJECT_BRANCH_DIRECTORY "${PROJECT_BRANCH}")
-set(CTEST_BINARY_DIRECTORY "${DASHROOT}/${CTEST_PROJECT_NAME}/builds/${PROJECT_BRANCH_DIRECTORY}/UVCDAT-${PROJECT_BUILD_INTERVAL}-${PROJECT_BUILD_ARCH}")
-set(CTEST_BINARY_INSTALL_DIRECTORY "${DASHROOT}/${CTEST_PROJECT_NAME}/builds/${PROJECT_BRANCH_DIRECTORY}/install")
+set(CTEST_BINARY_DIRECTORY "${DASHROOT}/${CTEST_PROJECT_NAME}/builds/${PROJECT_BRANCH_DIRECTORY}")
+set(CTEST_BINARY_INSTALL_DIRECTORY "${DASHROOT}/${CTEST_PROJECT_NAME}/builds/${PROJECT_BRANCH_DIRECTORY}")
+
+if (_uvcdat_build_mode)
+  set(CTEST_BINARY_DIRECTORY "${CTEST_BINARY_DIRECTORY}/${_uvcdat_build_mode}")
+  set(CTEST_BINARY_INSTALL_DIRECTORY "${CTEST_BINARY_INSTALL_DIRECTORY}/${_uvcdat_build_mode}")
+endif()
+
+set(CTEST_BINARY_DIRECTORY "${CTEST_BINARY_DIRECTORY}/UVCDAT-${PROJECT_BUILD_INTERVAL}-${PROJECT_BUILD_ARCH}")
+set(CTEST_BINARY_INSTALL_DIRECTORY "${CTEST_BINARY_INSTALL_DIRECTORY}/install")
 set(CTEST_SOURCE_DIRECTORY "${DASHROOT}/${CTEST_PROJECT_NAME}/source/${PROJECT_BRANCH_DIRECTORY}/UVCDAT-${PROJECT_BUILD_INTERVAL}-${PROJECT_BUILD_ARCH}")
 
 # Prepare to do an initial checkout, if necessary
 if(CTEST_UPDATE_COMMAND AND NOT EXISTS "${CTEST_SOURCE_DIRECTORY}")
-  if(PROJECT_BRANCH STREQUAL "master")
-    set(CTEST_CHECKOUT_COMMAND "${CTEST_UPDATE_COMMAND} clone --recursive ${REPO} ${CTEST_SOURCE_DIRECTORY}")
+  if(PROJECT_BRANCH STREQUAL "master" OR PROJECT_BRANCH STREQUAL "release")
+    set(CTEST_CHECKOUT_COMMAND "${CTEST_SCRIPT_DIRECTORY}/checkout.sh ${CTEST_UPDATE_COMMAND} ${REPO} ${CTEST_SOURCE_DIRECTORY} ${PROJECT_BRANCH}")
   else()
     set(CTEST_CHECKOUT_COMMAND "${CTEST_SCRIPT_DIRECTORY}/next_checkout.sh ${CTEST_UPDATE_COMMAND} ${CTEST_SOURCE_DIRECTORY} ${MASTER_REPO} ${REPO} ${TOPIC_NAME}")
   endif()
@@ -151,6 +160,11 @@ if((NOT "${PROJECT_BUILD_INTERVAL}" STREQUAL "Continuous") OR ("$ENV{FIRST_BUILD
   ctest_read_custom_files("${CTEST_BINARY_DIRECTORY}")
 
   ctest_build()
+
+  set(ENV{PATH} "$ENV{PATH}:${CTEST_BINARY_DIRECTORY}/install/bin:${CTEST_BINARY_DIRECTORY}/install/Externals/bin")
+  set(ENV{LD_LIBRARY_PATH} "$ENV{LD_LIBRARY_PATH}:${CTEST_BINARY_DIRECTORY}/install/lib:${CTEST_BINARY_DIRECTORY}/install/Externals/lib")
+  set(ENV{DYLD_LIBRARY_PATH} "$ENV{DYLD_LIBRARY_PATH}:${CTEST_BINARY_DIRECTORY}/install/lib:${CTEST_BINARY_DIRECTORY}/install/Externals/lib")
+  set(ENV{PYTHONPATH} "$ENV{PYTHONPATH}:${CTEST_BINARY_DIRECTORY}/install/lib/python2.7/site-packages:${CTEST_BINARY_DIRECTORY}/install/Externals/lib/python2.7/site-packages")
 
   ctest_test(BUILD "${CTEST_BINARY_DIRECTORY}" PARALLEL_LEVEL 1)
 

@@ -1,13 +1,19 @@
 cmake_minimum_required(VERSION 2.8.8 FATAL_ERROR)
 
+if ("${CMAKE_VERSION}" VERSION_LESS "2.8.12")
+  message(WARNING "Your CMake version is ${CMAKE_VERSION} which is depreciated for UV-CDAT. The recommended minimum CMake version is 2.8.12. Using older versions can result in build errors particularly with Xcode 5")
+endif()
+
 # Project name and initial checks
 #-----------------------------------------------------------------------------
 project(cdat)
 
 # Disable in source build of any kind
-STRING(REGEX MATCH "${cdat_SOURCE_DIR}/" BUILDINSOURCE "${cdat_BINARY_DIR}/")
+STRING(REGEX MATCH "^${cdat_SOURCE_DIR}/" BUILDINSOURCE "${cdat_BINARY_DIR}/")
 if (BUILDINSOURCE)
-   message(FATAL_ERROR "[ERROR] CDAT requires an out of source Build")
+   set(msg "[ERROR] CDAT requires an out of source Build.")
+   set(msg "${msg} Run 'git clean -dfx' to restore source dir.")
+   message(FATAL_ERROR "${msg}")
 endif()
 
 # Set cdat and cmake variables
@@ -88,34 +94,26 @@ if(APPLE)
   endif()
 
   # Support only 10.6 or higher for now
-  if(IS_DIRECTORY "/Developer/SDKs/MacOSX10.6.sdk")
-    set(HAVE_10_6_SDK TRUE)
-  endif()
-  if(IS_DIRECTORY "/Developer/SDKs/MacOSX10.7.sdk")
-    set(HAVE_10_7_SDK TRUE)
-  endif()
   if(IS_DIRECTORY "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.8.sdk")
     set(HAVE_10_8_SDK TRUE)
   endif()
+  if(IS_DIRECTORY "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.9.sdk")
+    set(HAVE_10_9_SDK TRUE)
+  endif()
 
   # Try for the lowest version SDK we can
-  if(HAVE_10_6_SDK)
-    set(CMAKE_OSX_DEPLOYMENT_TARGET 10.6 CACHE STRING "" FORCE)
-    set(CMAKE_OSX_SYSROOT "/Developer/SDKs/MacOSX10.6.sdk" CACHE PATH "" FORCE)
-  elseif(HAVE_10_7_SDK)
-    set(CMAKE_OSX_DEPLOYMENT_TARGET 10.7 CACHE STRING "" FORCE)
-    set(CMAKE_OSX_SYSROOT "/Developer/SDKs/MacOSX10.7.sdk" CACHE PATH "" FORCE)
-  elseif(HAVE_10_8_SDK)
-    if(NOT IS_DIRECTORY /opt/X11/include/X11)
-        #  message(FATAL_ERROR "[ERROR] X11 headers are not found")
-    endif()
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -I/opt/X11/include/X11")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -I/opt/X11/include/X11")
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -headerpad_max_install_names")
-    set(CMAKE_OSX_DEPLOYMENT_TARGET 10.8 CACHE STRING "" FORCE)
-    set(CMAKE_OSX_SYSROOT "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.8.sdk" CACHE PATH "" FORCE)
+  if(HAVE_10_8_SDK)
+      set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -headerpad_max_install_names")
+      set(CMAKE_OSX_DEPLOYMENT_TARGET 10.8 CACHE STRING "" FORCE)
+      set(CMAKE_OSX_SYSROOT "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.8.sdk" CACHE PATH "" FORCE)
+  elseif(HAVE_10_9_SDK)
+      set(CMAKE_C_COMPILER clang)
+      set(CMAKE_CXX_COMPILER clang++)
+      set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -headerpad_max_install_names")
+      set(CMAKE_OSX_DEPLOYMENT_TARGET 10.9 CACHE STRING "" FORCE)
+      set(CMAKE_OSX_SYSROOT "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.9.sdk" CACHE PATH "" FORCE)
   else()
-    message(FATAL_ERROR "[ERROR] CMAKE_OSX_SYSROOT='${CMAKE_OSX_SYSROOT}' not found. Requires MacOS X 10.6 or higher")
+      message(FATAL_ERROR "[ERROR] CMAKE_OSX_SYSROOT='${CMAKE_OSX_SYSROOT}' not found. Requires MacOS X 10.6 or higher")
   endif()
 
 endif()
@@ -178,21 +176,22 @@ endif()
 
 # Initialize submodules
 #-----------------------------------------------------------------------------
-if(GIT_FOUND)
-  message("[INFO] Updating git submodules")
-  execute_process(
-    COMMAND ${GIT_EXECUTABLE} submodule init
-    OUTPUT_VARIABLE subinit_out
-    ERROR_VARIABLE subinit_err
-    WORKING_DIRECTORY ${cdat_SOURCE_DIR}
-  )
-  execute_process(
-    COMMAND ${GIT_EXECUTABLE} submodule update
-    OUTPUT_VARIABLE subup_out
-    ERROR_VARIABLE subup_err
-    WORKING_DIRECTORY ${cdat_SOURCE_DIR}
-  )
-endif()
+# C. Doutriaux commented this out no submodules left at this time
+#if(GIT_FOUND)
+#  message("[INFO] Updating git submodules")
+#  execute_process(
+#    COMMAND ${GIT_EXECUTABLE} submodule init
+#    OUTPUT_VARIABLE subinit_out
+#    ERROR_VARIABLE subinit_err
+#    WORKING_DIRECTORY ${cdat_SOURCE_DIR}
+#  )
+#  execute_process(
+#    COMMAND ${GIT_EXECUTABLE} submodule update
+#    OUTPUT_VARIABLE subup_out
+#    ERROR_VARIABLE subup_err
+#    WORKING_DIRECTORY ${cdat_SOURCE_DIR}
+#  )
+#endif()
 
 # Check if system has fortran compiler and act accordingly
 #-----------------------------------------------------------------------------
@@ -213,7 +212,7 @@ set(PARTS_BUILT_INFO "${cdat_BINARY_DIR}/build_info.txt" CACHE STRING "File wher
 ## OFF the machine has no internet access all files are suppposed to be here, pre-downloaded
 option(OFFLINE_BUILD "Is there internet access, are we preping for it?" OFF)
 
-option(CDAT_BUILD_PARALLEL "Build parallel components of CDAT" ON)
+option(CDAT_BUILD_PARALLEL "Build parallel components of CDAT" OFF)
 
 # Option to choose between easy_install and pip (crunchy ssl/man in the middle prevents us to use pip here...
 set(EGG_INSTALLER "PIP" CACHE STRING "Which package installer to use")
@@ -221,32 +220,74 @@ set_property(CACHE EGG_INSTALLER PROPERTY STRINGS "PIP" "EASY_INSTALL")
 set(PIP_CERTIFICATE "" CACHE STRING "Certificate to use for PIP (LLNL issue really)")
 
 # Options for various types of builds
-option(CDAT_BUILD_GUI "Builds GUI-based dependencies (Vistrails, ParaView, VisIt, R, etc...) " ON)
-option(CDAT_BUILD_GRAPHICS "Build graphics-based dependencies (vcs, pyqt, Vistrails, ParaView, VisIt, R, etc...) " ON)
-option(CDAT_BUILD_ESGF "Builds a customized version for ESGF (Tkinter, less packages etc..)" OFF)
 
-# Flipping the option, Aashish add_cdat_external_dependent seems to need a negative of that
+# Default state
+set(CDAT_BUILD_LEAN OFF)
+set(CDAT_BUILD_ALL OFF)
+
+# Options
+option(CDAT_BUILD_GUI "Builds GUI-based dependencies (Vistrails, ParaView, VisIt, R, etc.) " ON)
+option(CDAT_BUILD_GRAPHICS "Build graphics-based dependencies (vcs, pyqt, Vistrails, ParaView, VisIt, R, etc.) " ON)
+option(CDAT_BUILD_ESGF "Alias for CDAT_BUILD_LEAN" OFF)
+option(CDAT_BUILD_UVCMETRICSPKG "Builds uvcmetrics package " ON)
+set(CDAT_BUILD_MODE "DEFAULT" CACHE STRING "Build mode for CDAT <ALL, LEAN, DEFAULT>")
+set_property(CACHE CDAT_BUILD_MODE PROPERTY STRINGS "DEFAULT" "ALL" "LEAN")
+
+# If ESGF option is on then our build mode is LEAN.
 if (CDAT_BUILD_ESGF)
-    set(CDAT_BUILD_WO_ESGF OFF)
-else()
-    set(CDAT_BUILD_WO_ESGF ON)
+  set(CDAT_BUILD_MODE "LEAN" CACHE STRING "Build mode for CDAT <ALL, LEAN, DEFAULT>" FORCE)
 endif()
 
-# First of all if ESGF then turn OFF GRAPHICS
-if (NOT CDAT_BUILD_WO_ESGF)
-    set(CDAT_BUILD_GRAPHICS OFF)
-    set(CDAT_BUILD_PARALLEL OFF)
-    set(CDMS_ONLY --enable-cdms-only)
+# Set the state of LEAN all based on the MODE
+if (CDAT_BUILD_MODE STREQUAL "LEAN")
+  set(CDAT_BUILD_LEAN ON)
+  set(CDAT_BUILD_ALL OFF)
+elseif (CDAT_BUILD_MODE STREQUAL "ALL")
+  set(CDAT_BUILD_LEAN OFF)
+  set(CDAT_BUILD_ALL ON)
 else()
-    set(CDMS_ONLY "")
+  set(CDAT_BUILD_LEAN OFF)
+  set(CDAT_BUILD_ALL OFF)
+endif()
+
+# First of all if LEAN then turn OFF GRAPHICS and PARALLEL
+if (CDAT_BUILD_LEAN)
+  set_property(CACHE CDAT_BUILD_GRAPHICS PROPERTY VALUE OFF)
+  set_property(CACHE CDAT_BUILD_PARALLEL PROPERTY VALUE OFF)
+  set(CDMS_ONLY --enable-cdms-only)
+else()
+  set(CDMS_ONLY "")
+endif()
+
+# If ALL is enabled then turn ON GUI, GRAPHICS, and PARALLEL
+if (CDAT_BUILD_ALL)
+  set_property(CACHE CDAT_BUILD_GUI PROPERTY VALUE ON)
+  set_property(CACHE CDAT_BUILD_GRAPHICS PROPERTY VALUE ON)
+  set_property(CACHE CDAT_BUILD_PARALLEL PROPERTY VALUE ON)
+  set_property(CACHE CDAT_BUILD_ESGF PROPERTY VALUE OFF)
+  set(CDMS_ONLY "")
 endif()
 
 # If no graphics then no gui as well
 if (NOT CDAT_BUILD_GRAPHICS)
-  set(CDAT_BUILD_GUI OFF)
+  set_property(CACHE CDAT_BUILD_GUI PROPERTY VALUE OFF)
 endif()
+
 set(ep_prefix ${cdat_BINARY_DIR}/build/prefix)
 set_property(DIRECTORY PROPERTY ep_log_dir ${cdat_BINARY_DIR}/logs)
+
+option(CDAT_DISPLAY_LOG "Show logging information on the console" OFF)
+
+if (CDAT_DISPLAY_LOG)
+    set(ep_log_options
+      LOG_DOWNLOAD 1
+      LOG_UPDATE 0
+      LOG_CONFIGURE 1
+      LOG_BUILD 0
+      LOG_TEST 1
+      LOG_INSTALL 1
+    )
+else()
 set(ep_log_options
   LOG_DOWNLOAD 0
   LOG_UPDATE 1
@@ -255,6 +296,7 @@ set(ep_log_options
   LOG_TEST 1
   LOG_INSTALL 1
 )
+endif()
 
 set(cdat_compiler_args
   -DCMAKE_CXX_COMPILER:FILEPATH=${CMAKE_CXX_COMPILER}
@@ -277,7 +319,11 @@ set(cdat_cxx_flags ${CMAKE_CXX_FLAGS})
 set(cdat_c_flags ${CMAKE_C_FLAGS})
 
 if(APPLE)
-  set(cdat_rpath_flag -R)
+  if("${CMAKE_C_COMPILER_ID}" STREQUAL "Clang" AND ${CMAKE_C_COMPILER_VERSION} VERSION_GREATER 4.2)
+    set(cdat_rpath_flag -Wl,-rpath,)
+  else()
+    set(cdat_rpath_flag -R)
+  endif()
   set(cdat_apple_compiler_args
     -DCMAKE_OSX_ARCHITECTURES:STRING=${CMAKE_OSX_ARCHITECTURES}
     -DCMAKE_OSX_ARCHITECTURES_M:STRING=${CMAKE_OSX_ARCHITECTURES_M}
@@ -289,7 +335,9 @@ if(APPLE)
   set(cdat_osx_arch_flag_fortran "-m${CMAKE_OSX_ARCHITECTURES_M}")
   set(cdat_osx_version_flag "-mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}")
   set(cdat_osx_sysroot "-isysroot ${CMAKE_OSX_SYSROOT}")
-  set(cdat_osx_flags "${cdat_osx_arch_flag} ${cdat_osx_version_flag} ${cdat_osx_sysroot} -pipe")
+  set(cdat_osx_cppflags "${cdat_osx_arch_flag} ${cdat_osx_version_flag} ${cdat_osx_sysroot} -pipe ")
+  set(cdat_osx_cxxflags "${cdat_osx_cppflag} ")
+  #set(cdat_osx_flags "${cdat_osx_cxxflag} -std=gnu99")
   set(cdat_osx_flags_fortran "${cdat_osx_arch_flag_fortran} ${cdat_osx_version_flag} ${cdat_osx_sysroot} -pipe")
   set(cdat_osx_ld_flags "-bind_at_load -mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}")
 
@@ -344,18 +392,13 @@ set(found_system_include_dirs)
 set(found_system_libraries)
 
 include(basemap_pkg)
-include(cairo_pkg)
 include(cdat_pkg)
 include(clapack_pkg)
-include(cmor_pkg)
 include(curl_pkg)
 include(cython_pkg)
 include(data_pkg)
 include(esmf_pkg)
 include(ffmpeg_pkg)
-include(fontconfig_pkg)
-include(freetype_pkg)
-include(g2clib_pkg)
 include(g2clib_pkg)
 include(gdal_pkg)
 include(geos_pkg)
@@ -371,58 +414,87 @@ include(lapack_pkg)
 include(lepl_pkg)
 include(libcf_pkg)
 include(libdrs_pkg)
-include(libxml2_pkg)
-include(libxslt_pkg)
 include(matplotlib_pkg)
+include(six_pkg)
+include(dateutils_pkg)
+include(pyparsing_pkg)
 include(md5_pkg)
 include(mpi4py_pkg)
 include(pyopenssl_pkg)
+include(setuptools_pkg)
 include(myproxyclient_pkg)
 include(netcdf_pkg)
 include(netcdfplus_pkg)
 include(numexpr_pkg)
 include(numpy_pkg)
 include(mpi_pkg)
-include(paraview_pkg)
-include(pixman_pkg)
+include(python_pkg)
+if (CDAT_BUILD_PARALLEL)
+  include(paraview_pkg)
+else()
+  include(vtk_pkg)
+endif()
 include(pkgconfig_pkg)
-#include(pmw_pkg)
 include(png_pkg)
-include(pyqt_pkg)
 include(pyspharm_pkg)
 include(pytables_pkg)
-include(python_pkg)
-include(qt4_pkg)
 include(readline_pkg)
 include(r_pkg)
 include(scikits_pkg)
 include(scipy_pkg)
-include(setuptools_pkg)
-include(distribute_pkg)
+## Part of setuptools no need to extra build it
+## include(distribute_pkg)
 include(pip_pkg)
 include(shapely_pkg)
-include(sip_pkg)
 include(pygments_pkg)
+include(markupsafe_pkg)
 include(jinja2_pkg)
 include(docutils_pkg)
 include(sphinx_pkg)
-include(spyder_pkg)
 #include(tcltk_pkg)
-include(termcap_pkg)
-include(tiff_pkg)
+include(freetype_pkg)
+include(zlib_pkg)
+include(libxml2_pkg)
+include(libxslt_pkg)
+include(png_pkg)
+## C. Doutriaux: We need to replace the following with a findPackage at some point
+if (APPLE)
+else()
+  include(pixman_pkg)
+  include(fontconfig_pkg)
+  include(tiff_pkg)
+  include(curses_pkg)
+endif()
+include(cmor_pkg)
 include(udunits2_pkg)
 include(uuid_pkg)
-include(visit_pkg)
+# IF we build the UVCDAT Metrics package
+if (CDAT_BUILD_UVCMETRICSPKG)
+  set(UVCMETRICS_TEST_DATA_DIRECTORY $ENV{HOME}/uvcmetrics_test_data CACHE PATH "DIR FOR UVCMETRICS TEST DATA" )
+  include(uvcmetrics_pkg)
+endif()
+#include(visit_pkg)
 include(vistrails_pkg)
 include(wget_pkg)
 include(yasm_pkg)
-include(zlib_pkg)
 include(pylibxml2_pkg)
 include(cdatlogger_pkg)
+include(pyclimate_pkg)
+include(scientificpython_pkg)
+include(windspharm_pkg)
+include(eof2_pkg)
+include(eofs_pkg)
+include(windfield_pkg)
 if (CDAT_BUILD_ESGF)
     include(lxml_pkg)
 endif()
 
+if (CDAT_BUILD_GUI)
+  include(qt4_pkg)
+  include(sip_pkg)
+  include(pyqt_pkg)
+  include(spyder_pkg)
+endif()
 
 # Configure custom configure/build/install step files
 #-----------------------------------------------------------------------------
@@ -458,6 +530,11 @@ configure_file(${cdat_CMAKE_SOURCE_DIR}/cdat_modules_extra/cleanenv_configure_st
 
 configure_file(${cdat_CMAKE_SOURCE_DIR}/cdat_modules_extra/cdat_configure_step.cmake.in
     ${cdat_CMAKE_BINARY_DIR}/cdat_configure_step.cmake
+    @ONLY
+)
+
+configure_file(${cdat_CMAKE_SOURCE_DIR}/fix_install_name.py.in
+    ${cdat_CMAKE_BINARY_DIR}/fix_install_name.py
     @ONLY
 )
 
@@ -509,9 +586,36 @@ if(found_system_libraries)
   endforeach()
 endif()
 message("[INFO] CDAT external link directories: ${cdat_external_link_directories}")
+message("[INFO] WGET EXEC: ${WGET_EXECUTABLE}")
 
 # Configure remaining files
 #-----------------------------------------------------------------------------
+
+# set candidate paths for setup_runtime scripts
+# will be added to environment variables in reverse order
+message("PARAVIEW VALS:${PARAVIEW_MAJOR}")
+set(SETUP_LIBRARY_PATHS
+  "Externals/lib/paraview-${PARAVIEW_MAJOR}.${PARAVIEW_MINOR} "
+  "Externals/lib/R/lib "
+  "Externals/lib "
+  "lib "
+)
+string(REPLACE ";" " " SETUP_LIBRARY_PATHS ${SETUP_LIBRARY_PATHS})
+set(SETUP_EXECUTABLE_PATHS
+  "Externals/paraview.app/Contents/bin "
+  "Library/Frameworks/Python.framework/Versions/${PYVER}/bin "
+  "Externals/bin "
+  "bin "
+)
+string(REPLACE ";" " " SETUP_EXECUTABLE_PATHS ${SETUP_EXECUTABLE_PATHS})
+set(SETUP_PYTHON_PATHS
+  "Externals/paraview.app/Contents/Python "
+  "Externals/lib/python${PYVER}/site-packages "
+  "Externals/lib/paraview-${PARAVIEW_MAJOR}.${PARAVIEW_MINOR}/site-packages "
+  "lib/python${PYVER}/site-packages "
+)
+string(REPLACE ";" " " SETUP_PYTHON_PATHS ${SETUP_PYTHON_PATHS})
+
 configure_file(${cdat_CMAKE_SOURCE_DIR}/cdat_modules_extra/install.py.in
     ${cdat_SOURCE_DIR}/installation/install.py
   @ONLY
@@ -566,10 +670,10 @@ endif()
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "UVCDAT")
 set(CPACK_PACKAGE_VENDOR "UVCDAT")
 set(CPACK_PACKAGE_NAME "UVCDAT")
-set(CPACK_PACKAGE_VERSION "1.4.0")
 set(CPACK_PACKAGE_VERSION_MAJOR "1")
 set(CPACK_PACKAGE_VERSION_MINOR "4")
 set(CPACK_PACKAGE_VERSION_PATCH "0")
+set(CPACK_PACKAGE_VERSION ${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}.${CPACK_PACKAGE_VERSION_PATCH})
 set(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_CURRENT_SOURCE_DIR}/docs/README.txt")
 set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/docs/Legal.txt")
 set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Aashish Chaudhary") #required
@@ -689,6 +793,16 @@ install(CODE "
 
     execute_process(COMMAND \${CMAKE_COMMAND} -E copy ${cdat_CMAKE_SOURCE_DIR}/uvcdat.plist
       ${CPACK_DESTINATION_PREFIX}/Info.plist
+      OUTPUT_VARIABLE out
+      RESULT_VARIABLE res
+      ERROR_VARIABLE err
+    )
+    if(NOT \${res} EQUAL 0)
+      message(\"Output: \${out}; Result: \${res}; Error: \${err}\")
+    endif()
+
+    execute_process(COMMAND ${PYTHON_EXECUTABLE} ${cdat_CMAKE_BINARY_DIR}/fix_install_name.py
+      ${CPACK_DESTINATION_PREFIX}
       OUTPUT_VARIABLE out
       RESULT_VARIABLE res
       ERROR_VARIABLE err

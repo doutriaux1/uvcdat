@@ -1,0 +1,18 @@
+os:
+  - linux
+  - osx
+
+language: c++
+
+before_install:
+    - if [ "$TRAVIS_OS_NAME" = "linux" ]; then sudo apt-get update -qq; sudo add-apt-repository ppa:kubuntu-ppa/beta -y; sudo apt-get update; sudo apt-get install -y cmake; sudo apt-get install -y gfortran; fi
+
+script:
+    - git submodule init
+    - git submodule update
+    - cd ..
+    - mkdir _build
+    - cd _build
+    - cmake -DGIT_PROTOCOL=git:// -DCDAT_BUILD_MODE=LEAN -DCDAT_BUILD_GRAPHICS=ON -DCDAT_BUILD_SCIPY=OFF ../uvcdat
+    - ctest -VV -S ../uvcdat/CMake/travis_build.cmake
+    - ctest -VV -S ../uvcdat/CMake/travis_submit.cmake
